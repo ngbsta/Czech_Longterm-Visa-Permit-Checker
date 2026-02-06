@@ -1,0 +1,92 @@
+name: Visa Tracker Auto Check
+
+on:
+  schedule:
+    # Her 6 saatte bir çalış (00:00, 06:00, 12:00, 18:00 UTC)
+    - cron: '0 */6 * * *'
+  
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode'
+        required: true
+        default: 'part1'
+        type: choice
+        options:
+          - part1
+          - part2
+          - both
+      start_date:
+        description: 'Start date (DD/MM/YYYY) - for Part 2'
+        required: false
+        default: ''
+      end_date:
+        description: 'End date (DD/MM/YYYY) - for Part 2'
+        required: false
+        default: ''
+
+jobs:
+  check-visas:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install Chrome
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget gnupg
+        wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+    
+    - name: Install ChromeDriver
+      run: |
+        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
+        CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_${CHROME_VERSION%%.*}")
+        wget -q "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip"
+        unzip chromedriver-linux64.zip
+        sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
+        sudo chmod +x /usr/local/bin/chromedriver
+    
+    - name: Install Python dependencies
+      run: |
+        pip install selenium requests
+    
+    - name: Run Visa Checker - Part 1
+      if: github.event_name == 'schedule' || github.event.inputs.mode == 'part1' || github.event.inputs.mode == 'both'
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        python github_runner.py --part 1
+    
+    - name: Run Visa Checker - Part 2
+      if: github.event.inputs.mode == 'part2' || github.event.inputs.mode == 'both'
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        START_DATE: ${{ github.event.inputs.start_date }}
+        END_DATE: ${{ github.event.inputs.end_date }}
+      run: |
+        if [ -n "$START_DATE" ] && [ -n "$END_DATE" ]; then
+          python github_runner.py --part 2 --start-date "$START_DATE" --end-date "$END_DATE"
+        else
+          python github_runner.py --part 2
+        fi
+    
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: visa-checker-logs-${{ github.run_number }}
+        path: |
+          *.log
+        retention-days: 7
