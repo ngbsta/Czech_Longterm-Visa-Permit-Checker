@@ -2,10 +2,10 @@ name: Visa Tracker Auto Check
 
 on:
   schedule:
-    # Her 6 saatte bir çalış (00:00, 06:00, 12:00, 18:00 UTC)
+    # Work every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
     - cron: '0 */6 * * *'
   
-  # Manuel çalıştırma seçeneği
+  # Run Manual
   workflow_dispatch:
 
 jobs:
@@ -13,15 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 📦 Checkout repository
+    - name:  Checkout repository
       uses: actions/checkout@v4
     
-    - name: 🐍 Set up Python
+    - name:  Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
     
-    - name: 🌐 Install Chrome
+    - name:  Install Chrome
       run: |
         echo "Installing Chrome..."
         sudo apt-get update
@@ -32,7 +32,7 @@ jobs:
         sudo apt-get install -y google-chrome-stable
         echo "✓ Chrome installed"
     
-    - name: 🚗 Install ChromeDriver
+    - name:  Install ChromeDriver
       run: |
         echo "Installing ChromeDriver..."
         CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+' | head -1)
@@ -61,14 +61,14 @@ jobs:
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
         echo "========================================"
-        echo "🚀 Starting Visa Tracker Pro"
+        echo " Starting Visa Tracker Pro"
         echo "========================================"
         python github_runner.py
         echo "========================================"
         echo "✓ Visa Tracker completed"
         echo "========================================"
     
-    - name: 📊 Upload logs (if any errors)
+    - name:  Upload logs (if any errors)
       if: failure()
       uses: actions/upload-artifact@v4
       with:
