@@ -1,17 +1,17 @@
-# 🔍 Czech Republic Visa Application Tracker
+ Czech Republic Visa Application Tracker
 
 Automated visa application tracking system for Czech Republic consulates (Ankara & Istanbul) using GitHub Actions.
 
-## 🌟 Features
+ Features
 
-- ✅ **Part 1**: Monitors BEING_PROCESSED applications for status changes (Approved/Rejected)
-- ✅ **Part 2**: Scans for new applications in the last 30 days
-- ⏰ **Runs automatically every 6 hours** (00:00, 06:00, 12:00, 18:00 UTC)
-- 🔍 **Debug mode always on** - detailed logs in GitHub Actions
-- 💾 **Supabase storage** - all data stored in PostgreSQL database
-- 🆓 **Completely free** - runs on GitHub's infrastructure
+ **Part 1**: Monitors BEING_PROCESSED applications for status changes (Approved/Rejected)
+ **Part 2**: Scans for new applications in the last 30 days
+ **Runs automatically every 6 hours** (00:00, 06:00, 12:00, 18:00 UTC)
+ **Debug mode always on** - detailed logs in GitHub Actions
+**Supabase storage** - all data stored in PostgreSQL database
+**Completely free** - runs on GitHub's infrastructure
 
-## 🏗️ Architecture
+##  Architecture
 
 The system consists of two parts:
 
@@ -27,12 +27,12 @@ The system consists of two parts:
 - Skips weekends (no processing on weekends)
 - Adds newly discovered applications to database
 
-## 📋 Prerequisites
+##  Prerequisites
 
 1. **GitHub Account** (free)
 2. **Supabase Account** (free tier sufficient)
 
-## 🚀 Setup
+##  Setup
 
 ### Step 1: Create Supabase Database
 
