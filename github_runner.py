@@ -2,7 +2,6 @@ import os
 import sys
 import time
 import requests
-import argparse
 from datetime import datetime, timedelta, timezone
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -21,6 +20,7 @@ CHECK_URL = "https://ipc.gov.cz/en/status-of-your-application/"
 APPLICATION_ID_FIELD = "id"
 DELAY_BETWEEN_CHECKS = 1.5
 MAX_NOT_FOUND_CONSECUTIVE = 8
+DEBUG_MODE = True  # Her zaman açık
 
 # Stats
 stats = {
@@ -35,8 +35,17 @@ stats = {
 # LOGGING
 # ==================================================
 def log(message, level="INFO"):
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] [{level}] {message}")
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    prefix = {
+        "INFO": "ℹ️",
+        "SUCCESS": "✅",
+        "ERROR": "❌",
+        "WARNING": "⚠️",
+        "DEBUG": "🔍",
+        "HIGHLIGHT": "📍"
+    }.get(level, "•")
+    
+    print(f"[{timestamp}] {prefix} {message}")
     sys.stdout.flush()
 
 # ==================================================
@@ -96,6 +105,7 @@ def is_weekend(date):
 # SELENIUM SETUP
 # ==================================================
 def setup_driver():
+    log("Setting up Chrome driver...", "DEBUG")
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
@@ -106,9 +116,11 @@ def setup_driver():
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
     driver = webdriver.Chrome(options=options)
+    log("Chrome driver ready", "SUCCESS")
     return driver
 
 def init_page(driver):
+    log(f"Loading page: {CHECK_URL}", "DEBUG")
     driver.get(CHECK_URL)
     time.sleep(2)
     try:
@@ -119,6 +131,7 @@ def init_page(driver):
         log("Cookie popup dismissed", "DEBUG")
         time.sleep(0.5)
     except:
+        log("No cookie popup found (or already dismissed)", "DEBUG")
         pass
 
 # ==================================================
@@ -184,15 +197,21 @@ def check_application_status(driver, application_id, is_first_check=False):
                 return "RETRY"
         
         if "preliminarily assessed positively" in result_text:
-            return "APPROVED"
+            status = "APPROVED"
         elif "was rejected" in result_text:
-            return "REJECTED"
+            status = "REJECTED"
         elif "being processed" in result_text:
-            return "BEING_PROCESSED"
+            status = "BEING_PROCESSED"
         elif "was not found" in result_text or "no application" in result_text or "not found" in result_text:
-            return "NOT_FOUND"
+            status = "NOT_FOUND"
         else:
-            return "UNKNOWN"
+            status = "UNKNOWN"
+        
+        if DEBUG_MODE:
+            emoji = {"APPROVED": "✅", "REJECTED": "❌", "BEING_PROCESSED": "⏳", "NOT_FOUND": "🔍", "UNKNOWN": "❓"}.get(status, "•")
+            log(f"  {emoji} {application_id} → {status}", "DEBUG")
+        
+        return status
             
     except Exception as e:
         stats["errors"] += 1
@@ -204,24 +223,29 @@ def check_with_retry(driver, application_id, is_first=False, max_retries=2):
         status = check_application_status(driver, application_id, is_first and attempt == 0)
         if status != "RETRY":
             return status
-        log(f"Retry {attempt + 1}/{max_retries} for {application_id}", "DEBUG")
+        log(f"  Retry {attempt + 1}/{max_retries} for {application_id}", "DEBUG")
         init_page(driver)
         time.sleep(1)
     return "ERROR"
 
 # ==================================================
-# PART 1
+# PART 1: Check BEING_PROCESSED Applications
 # ==================================================
-def run_part1(driver):
+def run_part1(driver, is_first=True):
     log("=" * 60)
-    log("PART 1: Checking BEING_PROCESSED applications")
+    log("PART 1: Checking BEING_PROCESSED applications", "INFO")
     log("=" * 60)
     
     try:
+        log("Fetching BEING_PROCESSED applications from database...", "DEBUG")
         applications = supabase_select("applications", {"status": "eq.BEING_PROCESSED"})
-        log(f"Found {len(applications)} applications to check")
+        log(f"Found {len(applications)} applications to check", "INFO")
     except Exception as e:
         log(f"Database error: {e}", "ERROR")
+        return
+
+    if len(applications) == 0:
+        log("No BEING_PROCESSED applications found. Skipping Part 1.", "INFO")
         return
 
     total = len(applications)
@@ -231,14 +255,14 @@ def run_part1(driver):
         application_id = app[APPLICATION_ID_FIELD]
         old_status = app["status"]
         
-        log(f"[{idx}/{total}] Checking {application_id}...")
+        log(f"[{idx}/{total}] Checking {application_id}...", "INFO")
         
-        new_status = check_with_retry(driver, application_id, idx == 1)
+        new_status = check_with_retry(driver, application_id, is_first and idx == 1)
         stats["checked"] += 1
         now = datetime.now(timezone.utc).isoformat()
         
         if new_status in ["APPROVED", "REJECTED"]:
-            log(f"✓ STATUS CHANGE: {application_id} → {new_status}", "SUCCESS")
+            log(f"  🎯 STATUS CHANGE: {application_id} → {new_status}", "SUCCESS")
             supabase_update("applications", {"status": new_status, "last_checked": now}, 
                           APPLICATION_ID_FIELD, application_id)
             supabase_insert("changes", {
@@ -255,47 +279,52 @@ def run_part1(driver):
             else:
                 stats["rejected"] += 1
         elif new_status == "BEING_PROCESSED":
+            log(f"  Still being processed", "DEBUG")
             supabase_update("applications", {"last_checked": now}, APPLICATION_ID_FIELD, application_id)
         elif new_status == "NOT_FOUND":
-            log(f"⚠ {application_id} not found on website", "WARNING")
+            log(f"  Not found on website", "WARNING")
             supabase_update("applications", {"last_checked": now}, APPLICATION_ID_FIELD, application_id)
         
         time.sleep(DELAY_BETWEEN_CHECKS)
     
-    log(f"Part 1 complete: {status_changes} changes found", "SUCCESS")
+    log(f"Part 1 complete: {status_changes} status changes found", "SUCCESS")
+    log("")
 
 # ==================================================
-# PART 2
+# PART 2: Discover NEW Applications
 # ==================================================
-def run_part2(driver, start_date=None, end_date=None):
+def run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=True):
     log("=" * 60)
-    log("PART 2: Discovering NEW applications")
+    log("PART 2: Discovering NEW applications", "INFO")
     log("=" * 60)
     
     today = datetime.now(timezone.utc).date()
-    start_date = start_date if start_date else today - timedelta(days=30)
-    end_date = end_date if end_date else today
+    start_date = part2_start_date if part2_start_date else today - timedelta(days=30)
+    end_date = part2_end_date if part2_end_date else today
     
-    log(f"Scanning: {start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}")
+    log(f"Scanning period: {start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}", "INFO")
     
     cities = ["ANKA", "ISTA"]
     total_new = 0
-    first_check = True
+    first_check = is_first
 
     for city in cities:
         city_name = "Ankara" if city == "ANKA" else "Istanbul"
-        log(f"\n📍 Scanning {city_name}...")
+        log(f"{'='*60}", "HIGHLIGHT")
+        log(f"Scanning {city_name}...", "HIGHLIGHT")
+        log(f"{'='*60}", "HIGHLIGHT")
         
         current_date = start_date
         city_new = 0
         
         while current_date <= end_date:
             if is_weekend(current_date):
+                log(f"  Skipping weekend: {current_date.strftime('%d/%m/%Y')}", "DEBUG")
                 current_date += timedelta(days=1)
                 continue
             
             date_str = current_date.strftime("%d/%m/%Y")
-            log(f"  Checking date: {date_str}")
+            log(f"Checking date: {date_str}", "INFO")
             
             consecutive_not_found = 0
             idx = 1
@@ -306,6 +335,8 @@ def run_part2(driver, start_date=None, end_date=None):
                 
                 exists, existing_status = application_exists(app_number)
                 if exists:
+                    if DEBUG_MODE:
+                        log(f"  ⏭️  {app_number} already in DB ({existing_status})", "DEBUG")
                     idx += 1
                     consecutive_not_found = 0
                     continue
@@ -316,7 +347,8 @@ def run_part2(driver, start_date=None, end_date=None):
                 now = datetime.now(timezone.utc).isoformat()
                 
                 if status in ["APPROVED", "REJECTED", "BEING_PROCESSED"]:
-                    log(f"    ✓ NEW: {app_number} → {status}", "SUCCESS")
+                    emoji = "✅" if status == "APPROVED" else "❌" if status == "REJECTED" else "⏳"
+                    log(f"  {emoji} NEW: {app_number} → {status}", "SUCCESS")
                     
                     city_code = app_number[:4]
                     city_name_db = "ankara" if city_code == "ANKA" else "istanbul"
@@ -352,46 +384,70 @@ def run_part2(driver, start_date=None, end_date=None):
                 time.sleep(DELAY_BETWEEN_CHECKS)
             
             if day_found > 0:
-                log(f"    {date_str}: +{day_found} new applications")
+                log(f"  📊 {date_str}: +{day_found} new applications", "INFO")
+            else:
+                log(f"  📊 {date_str}: No new applications", "DEBUG")
             
             current_date += timedelta(days=1)
         
-        log(f"  {city_name} total: {city_new} new applications")
+        log(f"{city_name} total: {city_new} new applications", "SUCCESS")
+        log("")
     
-    log(f"Part 2 complete: {total_new} new applications found", "SUCCESS")
+    log(f"Part 2 complete: {total_new} total new applications found", "SUCCESS")
 
 # ==================================================
 # MAIN
 # ==================================================
 def main():
-    parser = argparse.ArgumentParser(description='Visa Tracker GitHub Runner')
-    parser.add_argument('--part', type=int, choices=[1, 2], required=True, help='Part to run (1 or 2)')
-    parser.add_argument('--start-date', type=str, help='Start date DD/MM/YYYY (Part 2 only)')
-    parser.add_argument('--end-date', type=str, help='End date DD/MM/YYYY (Part 2 only)')
-    
-    args = parser.parse_args()
-    
     if not SUPABASE_URL or not SUPABASE_KEY:
-        log("ERROR: SUPABASE_URL and SUPABASE_KEY must be set", "ERROR")
+        log("ERROR: SUPABASE_URL and SUPABASE_KEY environment variables must be set!", "ERROR")
         sys.exit(1)
     
     log("=" * 60)
-    log("🚀 VISA TRACKER PRO - GitHub Actions Runner")
+    log("🚀 VISA TRACKER PRO - GitHub Actions Runner", "SUCCESS")
     log("=" * 60)
+    log(f"Debug Mode: {'ON' if DEBUG_MODE else 'OFF'}", "INFO")
+    log(f"Started at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}", "INFO")
+    log("=" * 60)
+    log("")
     
-    driver = setup_driver()
-    log("Browser initialized (headless mode)")
+    driver = None
+    start_time = time.time()
     
     try:
-        if args.part == 1:
-            run_part1(driver)
-        else:
-            start_date = None
-            end_date = None
-            
-            if args.start_date:
-                try:
-                    day, month, year = map(int, args.start_date.split("/"))
-                    start_date = datetime(year, month, day).date()
-                except:
-                    log(f"Invalid start
+        driver = setup_driver()
+        log("")
+        
+        # Part 1: BEING_PROCESSED kontrolü
+        run_part1(driver, is_first=True)
+        
+        # Part 2: Son 30 gün taraması
+        run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=False)
+        
+    except Exception as e:
+        log(f"Fatal error: {e}", "ERROR")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+    finally:
+        if driver:
+            driver.quit()
+            log("Browser closed", "DEBUG")
+    
+    # Summary
+    elapsed = time.time() - start_time
+    log("")
+    log("=" * 60)
+    log("📊 RUN SUMMARY", "SUCCESS")
+    log("=" * 60)
+    log(f"Total checked: {stats['checked']}", "INFO")
+    log(f"New found: {stats['new_found']}", "INFO")
+    log(f"Approved: {stats['approved']}", "INFO")
+    log(f"Rejected: {stats['rejected']}", "INFO")
+    log(f"Errors: {stats['errors']}", "INFO")
+    log(f"Duration: {int(elapsed // 60)}m {int(elapsed % 60)}s", "INFO")
+    log(f"Finished at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}", "INFO")
+    log("=" * 60)
+
+if __name__ == "__main__":
+    main()
