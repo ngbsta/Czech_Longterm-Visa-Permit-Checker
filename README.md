@@ -31,12 +31,3 @@ The system consists of two parts:
 
 1. **GitHub Account** (free)
 2. **Supabase Account** (free tier sufficient)
-
-##  Setup
-
-### Step 1: Create Supabase Database
-
-1. Go to [Supabase](https://supabase.com) and create a free account
-2. Create a new project
-3. Go to **SQL Editor** and run:
-```sql
