@@ -20,7 +20,7 @@ CHECK_URL = "https://ipc.gov.cz/en/status-of-your-application/"
 APPLICATION_ID_FIELD = "id"
 DELAY_BETWEEN_CHECKS = 1.5
 MAX_NOT_FOUND_CONSECUTIVE = 8
-DEBUG_MODE = True  # Her zaman açık
+DEBUG_MODE = True  # Always on
 
 # Stats
 stats = {
@@ -418,10 +418,10 @@ def main():
         driver = setup_driver()
         log("")
         
-        # Part 1: BEING_PROCESSED kontrolü
+        # Part 1: BEING_PROCESSED check
         run_part1(driver, is_first=True)
         
-        # Part 2: Son 30 gün taraması
+        # Part 2: Scan for last 30 days
         run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=False)
         
     except Exception as e:
@@ -451,3 +451,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
