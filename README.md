@@ -22,7 +22,7 @@ The system consists of two parts:
 - Records all changes in the `changes` table
 
 ### Part 2: New Application Discovery
-- Scans the last 30 days for new applications
+- Scans the last 45 days for new applications
 - Checks both Ankara (ANKA) and Istanbul (ISTA) consulates
 - Skips weekends (no processing on weekends)
 - Adds newly discovered applications to database
