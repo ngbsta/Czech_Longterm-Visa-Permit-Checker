@@ -327,7 +327,7 @@ def run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=True)
     log("─" * 60, "DIM")
     
     today = datetime.now(timezone.utc).date()
-    start_date = part2_start_date if part2_start_date else today - timedelta(days=30)
+    start_date = part2_start_date if part2_start_date else today - timedelta(days=45)
     end_date = part2_end_date if part2_end_date else today
     
     log(f"   Scanning: {start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}", "INFO")
@@ -475,3 +475,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
