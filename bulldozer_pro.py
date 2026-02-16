@@ -428,7 +428,7 @@ def main():
         sys.exit(1)
     
     log("=" * 60, "DIM")
-    log(" 🚧 CAUTION! 🚧  🚜 DOZER PRO STARTED ", "SUCCESS")
+    log(" 🚧 CAUTION! 🚧  🚜 BULLDOZER PRO STARTED! ", "SUCCESS")
     log("=" * 60, "DIM")
     log(f"Debug Mode: {'ON' if DEBUG_MODE else 'OFF'}", "INFO")
     log(f"Started at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}", "INFO")
@@ -475,5 +475,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
