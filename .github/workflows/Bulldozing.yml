@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  check-visas:
+  Bulldozer Pro on Action:
     runs-on: ubuntu-latest
     
     steps:
