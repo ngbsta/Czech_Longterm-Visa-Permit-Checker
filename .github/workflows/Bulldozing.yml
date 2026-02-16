@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  Bulldozer Pro on Action:
+  Bulldozer_Pro_on_Action:
     runs-on: ubuntu-latest
     
     steps:
