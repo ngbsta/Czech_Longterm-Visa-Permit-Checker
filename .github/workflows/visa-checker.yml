@@ -61,11 +61,11 @@ jobs:
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
         echo "========================================"
-        echo " Starting Visa Tracker Pro"
+        echo " Starting Bulldozer Pro"
         echo "========================================"
-        python github_runner.py
+        python bulldozer_pro.py
         echo "========================================"
-        echo "✓ Visa Tracker completed"
+        echo "✓ Bulldozer Pro Completed"
         echo "========================================"
     
     - name:  Upload logs (if any errors)
