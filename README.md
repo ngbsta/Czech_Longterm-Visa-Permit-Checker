@@ -149,7 +149,7 @@ start_date = part2_start_date if part2_start_date else today - timedelta(days=30
 ```
 
 ### Change Schedule
-Edit `.github/workflows/visa-checker.yml` line 5:
+Edit `.github/workflows/Bulldozing.yml` line 5:
 ```yaml
 - cron: '0 */6 * * *'  # Every 6 hours
 # Examples:
