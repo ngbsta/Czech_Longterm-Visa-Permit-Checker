@@ -97,7 +97,7 @@ Add two secrets:
 If starting fresh, you can run the local GUI application to scrape historical data, or manually trigger the workflow to start collecting data.
 
 For historical data collection:
-1. Edit `github_runner.py` line 293:
+1. Edit `bolldozer_pro.py` line 293:
 ```python
    start_date = part2_start_date if part2_start_date else today - timedelta(days=90)  # 90 days
 ```
