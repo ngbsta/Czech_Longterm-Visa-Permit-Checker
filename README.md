@@ -142,7 +142,7 @@ Each run:
 ## ⚙️ Configuration
 
 ### Change Scan Period (Part 2)
-Edit `github_runner.py` line 293:
+Edit `bulldozer_pro.py` line 293:
 ```python
 start_date = part2_start_date if part2_start_date else today - timedelta(days=30)
 # Change 30 to 60, 90, etc.
@@ -159,7 +159,7 @@ Edit `.github/workflows/visa-checker.yml` line 5:
 ```
 
 ### Add More Cities
-Edit `github_runner.py` line 305:
+Edit `bulldozer_pro.py` line 305:
 ```python
 cities = ["ANKA", "ISTA"]  # Add more city codes here
 ```
