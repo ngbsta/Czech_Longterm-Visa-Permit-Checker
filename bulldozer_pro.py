@@ -22,13 +22,19 @@ DELAY_BETWEEN_CHECKS = 1.5
 MAX_NOT_FOUND_CONSECUTIVE = 8
 DEBUG_MODE = True 
 
+# Retry config for Supabase API calls
+MAX_API_RETRIES = 3
+API_RETRY_DELAY = 5  # seconds between retries
+RETRYABLE_STATUS_CODES = {502, 503, 504, 429}
+
 # Stats
 stats = {
     "checked": 0,
     "approved": 0,
     "rejected": 0,
     "new_found": 0,
-    "errors": 0
+    "errors": 0,
+    "api_retries": 0
 }
 
 # ==================================================
@@ -50,7 +56,61 @@ def log(message, level="INFO"):
     sys.stdout.flush()
 
 # ==================================================
-# SUPABASE HELPERS
+# RETRY WRAPPER FOR SUPABASE API CALLS
+# ==================================================
+def supabase_request_with_retry(method, url, max_retries=MAX_API_RETRIES, **kwargs):
+    """
+    Generic retry wrapper for Supabase HTTP requests.
+    Retries on 502/503/504/429 and connection errors.
+    """
+    last_exception = None
+    
+    for attempt in range(max_retries):
+        try:
+            if method == "GET":
+                r = requests.get(url, **kwargs)
+            elif method == "POST":
+                r = requests.post(url, **kwargs)
+            elif method == "PATCH":
+                r = requests.patch(url, **kwargs)
+            else:
+                raise ValueError(f"Unsupported method: {method}")
+            
+            # If status code is retryable, retry
+            if r.status_code in RETRYABLE_STATUS_CODES:
+                stats["api_retries"] += 1
+                wait_time = API_RETRY_DELAY * (attempt + 1)  # exponential-ish backoff
+                log(f"   🔄 Supabase {r.status_code} error, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})", "WARNING")
+                time.sleep(wait_time)
+                continue
+            
+            # For other errors, raise immediately
+            r.raise_for_status()
+            return r
+            
+        except requests.exceptions.ConnectionError as e:
+            stats["api_retries"] += 1
+            last_exception = e
+            wait_time = API_RETRY_DELAY * (attempt + 1)
+            log(f"   🔄 Connection error, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})", "WARNING")
+            time.sleep(wait_time)
+        except requests.exceptions.HTTPError as e:
+            # Non-retryable HTTP errors — raise immediately
+            raise
+        except requests.exceptions.Timeout as e:
+            stats["api_retries"] += 1
+            last_exception = e
+            wait_time = API_RETRY_DELAY * (attempt + 1)
+            log(f"   🔄 Timeout, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})", "WARNING")
+            time.sleep(wait_time)
+    
+    # All retries exhausted
+    if last_exception:
+        raise last_exception
+    raise requests.exceptions.HTTPError(f"Max retries ({max_retries}) exhausted for {url}")
+
+# ==================================================
+# SUPABASE HELPERS (with retry)
 # ==================================================
 def get_headers():
     return {
@@ -65,28 +125,24 @@ def supabase_select(table, filters=None):
     params = {"select": "*"}
     if filters:
         params.update(filters)
-    r = requests.get(url, headers=get_headers(), params=params, timeout=30)
-    r.raise_for_status()
+    r = supabase_request_with_retry("GET", url, headers=get_headers(), params=params, timeout=30)
     return r.json()
 
 def supabase_update(table, data, match_column, match_value):
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     params = {match_column: f"eq.{match_value}"}
-    r = requests.patch(url, headers=get_headers(), json=data, params=params, timeout=30)
-    r.raise_for_status()
+    supabase_request_with_retry("PATCH", url, headers=get_headers(), json=data, params=params, timeout=30)
 
 def supabase_insert(table, data):
     try:
         url = f"{SUPABASE_URL}/rest/v1/{table}"
         headers = get_headers()
         headers["Prefer"] = "return=representation"
-        r = requests.post(url, headers=headers, json=data, timeout=30)
-        if r.status_code >= 400:
-            log(f"Insert error ({table}): {r.status_code} - {r.text}", "ERROR")
-            return False
+        r = supabase_request_with_retry("POST", url, headers=headers, json=data, timeout=30)
         return True
     except Exception as e:
         log(f"Insert exception ({table}): {e}", "ERROR")
+        stats["errors"] += 1
         return False
 
 def application_exists(application_id):
@@ -135,6 +191,17 @@ def init_page(driver):
     except:
         pass
 
+def recover_browser(driver):
+    """Browser recovery: refresh page, dismiss cookies, ready for next check"""
+    log("   🔧 Recovering browser session...", "WARNING")
+    try:
+        init_page(driver)
+        log("   🔧 Browser recovered successfully", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"   🔧 Browser recovery failed: {e}", "ERROR")
+        return False
+
 # ==================================================
 # FAST STATUS CHECK - NO PAGE REFRESH
 # ==================================================
@@ -145,9 +212,7 @@ def check_application_status(driver, application_id, is_first_check=False):
     """
     try:
         if is_first_check:
-            
             init_page(driver)
-        
         
         old_alert_text = ""
         try:
@@ -156,11 +221,9 @@ def check_application_status(driver, application_id, is_first_check=False):
         except:
             pass
         
-        
         input_box = WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.NAME, "visaApplicationNumber"))
         )
-        
         
         input_box.click()
         input_box.send_keys(Keys.CONTROL + "a")
@@ -168,16 +231,13 @@ def check_application_status(driver, application_id, is_first_check=False):
         time.sleep(0.1)
         input_box.send_keys(application_id)
         
-        
         submit_btn = driver.find_element(By.XPATH, "//button[@type='submit' and contains(@class,'button__primary')]")
         submit_btn.click()
-        
         
         def alert_changed(driver):
             try:
                 alert = driver.find_element(By.CSS_SELECTOR, "div.alert__content")
                 new_text = alert.text
-                
                 return new_text != old_alert_text and application_id.lower() in new_text.lower()
             except:
                 return False
@@ -187,18 +247,15 @@ def check_application_status(driver, application_id, is_first_check=False):
         except TimeoutException:            
             pass
         
-       
         time.sleep(0.3)  
         
         try:
             result = driver.find_element(By.CSS_SELECTOR, "div.alert__content")
             result_text = result.text.lower()
         except:
-            
             log(f"   ⚠️ Alert not found, refreshing page...", "WARNING")
             init_page(driver)
             return "RETRY"
-        
         
         if DEBUG_MODE:
             if "preliminarily assessed positively" in result_text:
@@ -212,12 +269,9 @@ def check_application_status(driver, application_id, is_first_check=False):
             else:
                 log(f"   🔍 [{application_id}]: Unknown", "DEBUG")
         
-       
         if application_id.lower() not in result_text:
-            
             log(f"   ⚠️ Stale response, retrying...", "WARNING")
             time.sleep(1)
-            
             try:
                 result = driver.find_element(By.CSS_SELECTOR, "div.alert__content")
                 result_text = result.text.lower()
@@ -225,7 +279,6 @@ def check_application_status(driver, application_id, is_first_check=False):
                     return "RETRY"
             except:
                 return "RETRY"
-        
         
         if "preliminarily assessed positively" in result_text:
             return "APPROVED"
@@ -358,7 +411,6 @@ def run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=True)
             while consecutive_not_found < MAX_NOT_FOUND_CONSECUTIVE:
                 app_number = f"{city}{current_date.strftime('%Y%m%d')}{idx:04d}"
                 
-                
                 exists, existing_status = application_exists(app_number)
                 if exists:
                     idx += 1
@@ -373,7 +425,6 @@ def run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=True)
                 if status in ["APPROVED", "REJECTED", "BEING_PROCESSED"]:
                     emoji = "✅" if status == "APPROVED" else "❌" if status == "REJECTED" else "⏳"
                     log(f"      {emoji} {app_number} → {status}", "SUCCESS")
-                    
                     
                     city_code = app_number[:4] 
                     city_name_db = "ankara" if city_code == "ANKA" else "istanbul"
@@ -441,9 +492,7 @@ def main():
         driver = setup_driver()
         log("", "DIM")
         
-        
         run_part1(driver, is_first=True)
-        
         
         run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=False)
         
@@ -457,7 +506,6 @@ def main():
             driver.quit()
             log("🌐 Browser closed", "DIM")
     
-    
     elapsed = time.time() - start_time
     log("", "DIM")
     log("=" * 60, "DIM")
@@ -468,13 +516,10 @@ def main():
     log(f"Approved: {stats['approved']}", "INFO")
     log(f"Rejected: {stats['rejected']}", "INFO")
     log(f"Errors: {stats['errors']}", "INFO")
+    log(f"API retries: {stats['api_retries']}", "INFO")
     log(f"Duration: {int(elapsed // 60)}m {int(elapsed % 60)}s", "INFO")
     log(f"Finished at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}", "INFO")
     log("=" * 60, "DIM")
 
 if __name__ == "__main__":
     main()
-
-
-
-
