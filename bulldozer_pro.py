@@ -20,7 +20,7 @@ CHECK_URL = "https://ipc.gov.cz/en/status-of-your-application/"
 APPLICATION_ID_FIELD = "id"
 DELAY_BETWEEN_CHECKS = 1.5
 MAX_NOT_FOUND_CONSECUTIVE = 8
-DEBUG_MODE = True  # Her zaman açık
+DEBUG_MODE = True 
 
 # Stats
 stats = {
@@ -145,10 +145,10 @@ def check_application_status(driver, application_id, is_first_check=False):
     """
     try:
         if is_first_check:
-            # İlk kontrolde sayfayı yükle
+            
             init_page(driver)
         
-        # 1. Mevcut alert varsa text'ini al (karşılaştırma için)
+        
         old_alert_text = ""
         try:
             old_alert = driver.find_element(By.CSS_SELECTOR, "div.alert__content")
@@ -156,51 +156,50 @@ def check_application_status(driver, application_id, is_first_check=False):
         except:
             pass
         
-        # 2. Input alanını bul, temizle, yeni ID gir
+        
         input_box = WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.NAME, "visaApplicationNumber"))
         )
         
-        # Tam temizlik için select all + delete
+        
         input_box.click()
         input_box.send_keys(Keys.CONTROL + "a")
         input_box.send_keys(Keys.DELETE)
         time.sleep(0.1)
         input_box.send_keys(application_id)
         
-        # 3. Submit
+        
         submit_btn = driver.find_element(By.XPATH, "//button[@type='submit' and contains(@class,'button__primary')]")
         submit_btn.click()
         
-        # 4. Alert'in DEĞİŞMESİNİ bekle (yeni sonuç)
+        
         def alert_changed(driver):
             try:
                 alert = driver.find_element(By.CSS_SELECTOR, "div.alert__content")
                 new_text = alert.text
-                # Alert text değişti VE yeni application ID'yi içeriyor
+                
                 return new_text != old_alert_text and application_id.lower() in new_text.lower()
             except:
                 return False
         
         try:
             WebDriverWait(driver, 8).until(alert_changed)
-        except TimeoutException:
-            # Timeout olursa yine de okumayı dene
+        except TimeoutException:            
             pass
         
-        # 5. Sonucu oku
-        time.sleep(0.3)  # Küçük buffer
+       
+        time.sleep(0.3)  
         
         try:
             result = driver.find_element(By.CSS_SELECTOR, "div.alert__content")
             result_text = result.text.lower()
         except:
-            # Alert bulunamadı - sayfa sorunlu olabilir, refresh dene
+            
             log(f"   ⚠️ Alert not found, refreshing page...", "WARNING")
             init_page(driver)
             return "RETRY"
         
-        # Debug - kısa ve öz
+        
         if DEBUG_MODE:
             if "preliminarily assessed positively" in result_text:
                 log(f"   🔍 [{application_id}]: Approved!", "SUCCESS")
@@ -213,12 +212,12 @@ def check_application_status(driver, application_id, is_first_check=False):
             else:
                 log(f"   🔍 [{application_id}]: Unknown", "DEBUG")
         
-        # 6. ID kontrolü
+       
         if application_id.lower() not in result_text:
-            # Yanlış sonuç - eski cache kalmış olabilir
+            
             log(f"   ⚠️ Stale response, retrying...", "WARNING")
             time.sleep(1)
-            # Tekrar dene
+            
             try:
                 result = driver.find_element(By.CSS_SELECTOR, "div.alert__content")
                 result_text = result.text.lower()
@@ -227,7 +226,7 @@ def check_application_status(driver, application_id, is_first_check=False):
             except:
                 return "RETRY"
         
-        # 7. Parse status
+        
         if "preliminarily assessed positively" in result_text:
             return "APPROVED"
         elif "was rejected" in result_text:
@@ -251,7 +250,7 @@ def check_with_retry(driver, application_id, is_first=False, max_retries=2):
         if status != "RETRY":
             return status
         log(f"   🔄 Retry {attempt + 1}/{max_retries} for {application_id}", "DIM")
-        init_page(driver)  # Sayfayı yenile
+        init_page(driver) 
         time.sleep(1)
     return "ERROR"
 
@@ -327,7 +326,7 @@ def run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=True)
     log("─" * 60, "DIM")
     
     today = datetime.now(timezone.utc).date()
-    start_date = part2_start_date if part2_start_date else today - timedelta(days=45)
+    start_date = part2_start_date if part2_start_date else today - timedelta(days=60)
     end_date = part2_end_date if part2_end_date else today
     
     log(f"   Scanning: {start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}", "INFO")
@@ -359,7 +358,7 @@ def run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=True)
             while consecutive_not_found < MAX_NOT_FOUND_CONSECUTIVE:
                 app_number = f"{city}{current_date.strftime('%Y%m%d')}{idx:04d}"
                 
-                # Önce DB'de var mı kontrol et
+                
                 exists, existing_status = application_exists(app_number)
                 if exists:
                     idx += 1
@@ -375,11 +374,11 @@ def run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=True)
                     emoji = "✅" if status == "APPROVED" else "❌" if status == "REJECTED" else "⏳"
                     log(f"      {emoji} {app_number} → {status}", "SUCCESS")
                     
-                    # city ve submit_date'i application ID'den çıkar
-                    city_code = app_number[:4]  # ANKA veya ISTA
+                    
+                    city_code = app_number[:4] 
                     city_name_db = "ankara" if city_code == "ANKA" else "istanbul"
-                    submit_date_str = app_number[4:12]  # YYYYMMDD
-                    submit_date = f"{submit_date_str[:4]}-{submit_date_str[4:6]}-{submit_date_str[6:8]}"  # YYYY-MM-DD
+                    submit_date_str = app_number[4:12]  
+                    submit_date = f"{submit_date_str[:4]}-{submit_date_str[4:6]}-{submit_date_str[6:8]}" 
                     
                     supabase_insert("applications", {
                         "id": app_number,
@@ -442,10 +441,10 @@ def main():
         driver = setup_driver()
         log("", "DIM")
         
-        # Part 1: BEING_PROCESSED kontrolü
+        
         run_part1(driver, is_first=True)
         
-        # Part 2: Son 30 gün taraması
+        
         run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=False)
         
     except Exception as e:
@@ -458,7 +457,7 @@ def main():
             driver.quit()
             log("🌐 Browser closed", "DIM")
     
-    # Summary
+    
     elapsed = time.time() - start_time
     log("", "DIM")
     log("=" * 60, "DIM")
@@ -475,6 +474,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
