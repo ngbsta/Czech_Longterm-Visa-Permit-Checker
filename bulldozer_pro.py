@@ -331,13 +331,16 @@ def run_part1(driver, is_first=True):
     total = len(applications)
     status_changes = 0
     
+    if is_first:
+        init_page(driver)
+    
     for idx, app in enumerate(applications, 1):
         application_id = app[APPLICATION_ID_FIELD]
         old_status = app["status"]
         
         log(f"[{idx}/{total}] Checking {application_id}...", "INFO")
         
-        new_status = check_with_retry(driver, application_id, is_first and idx == 1)
+        new_status = check_with_retry(driver, application_id, is_first=False)
         stats["checked"] += 1
         now = datetime.now(timezone.utc).isoformat()
         
@@ -388,6 +391,10 @@ def run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=True)
     total_new = 0
     first_check = is_first
 
+    if first_check:
+        init_page(driver)
+        first_check = False
+
     for city in cities:
         city_name = "Ankara" if city == "ANKA" else "Istanbul"
         log("", "DIM")
@@ -417,8 +424,7 @@ def run_part2(driver, part2_start_date=None, part2_end_date=None, is_first=True)
                     consecutive_not_found = 0
                     continue
                 
-                status = check_with_retry(driver, app_number, first_check)
-                first_check = False
+                status = check_with_retry(driver, app_number, is_first=False)
                 stats["checked"] += 1
                 now = datetime.now(timezone.utc).isoformat()
                 
