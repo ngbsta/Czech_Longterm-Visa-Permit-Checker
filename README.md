@@ -187,4 +187,4 @@ Feel free to fork and modify for your needs. Pull requests welcome!
 
 This tool is for personal use. Respect the Czech government website's terms of service. The default configuration includes reasonable delays (1.5s) between requests to avoid server overload.
 
----
+----
