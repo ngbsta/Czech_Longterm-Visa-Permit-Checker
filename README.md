@@ -180,7 +180,7 @@ cities = ["ANKA", "ISTA"]  # Add more city codes here
 
 ##  Contributing
 
-Feel free to fork and modify for your needs. Pull requests welcome!
+Feel free to fork and modify for your needs. Pull requests welcome
 
 
 ##  Disclaimer
